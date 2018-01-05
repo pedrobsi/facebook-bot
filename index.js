@@ -27,7 +27,7 @@ app.get('/webhook/', function(req, res) {
   if (req.query['hub.verify_token'] === process.env.VERIFY_TOKEN){
     return res.send(req.query['hub.challenge'])
   }
-  res.send('wrong token')
+  res.send('387879545')
 })
 
 app.listen(app.get('port'), function(){
