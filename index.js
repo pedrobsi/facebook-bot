@@ -36,9 +36,9 @@ app.listen(app.get('port'), function(){
 
 
 const bot = new BootBot({
-  accessToken: process.env.ACCESS_TOKEN,
-  verifyToken: process.env.VERIFY_TOKEN,
-  appSecret: process.env.APP_SECRET
+    accessToken: "EAAJ4VgnRkfUBAHvEFPEBId1fdH8SdvXVUfPq1cX8g94blUjfUHalkoCLrgXAmFsqAnCuv894PemlV7aRMZCpFPZC1hxhGixHAHmkZA74ZAFGV1eZClsXhB6nZC8BZBeJWs2vZCUtXvtmPFAoMbCErXkUVlXut1mpYIBMQoCMKh8NfAZDZD", // process.env.ACCESS_TOKEN,
+    verifyToken: "38pe3940**", // process.env.VERIFY_TOKEN,
+    appSecret: "5cf6d657b298a985cfc53819918d596f" // process.env.APP_SECRET
 })
 
 bot.setGreetingText("Hello, I'm here to help you manage your tasks. Be sure to setup your bucket by typing 'Setup'. ")
