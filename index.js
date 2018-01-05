@@ -1,160 +1,182 @@
-const express = require('express')
-const bodyParser = require('body-parser')
-const request = require('request')
-const app = express()
-const Cosmic = require('cosmicjs')
-const BootBot = require('bootbot')
-require('dotenv').config()
-const chrono = require('chrono-node')
-var schedule = require('node-schedule')
-const EventEmitter = require('events').EventEmitter
+/*
+ * Starter Project for Messenger Platform Quick Start Tutorial
+ *
+ * Remix this as the starting point for following the Messenger Platform
+ * quick start tutorial.
+ *
+ * https://developers.facebook.com/docs/messenger-platform/getting-started/quick-start/
+ *
+ */
 
-var config = {}
+'use strict';
 
-const reminders = []
+// Imports dependencies and set up http server
+const 
+  request = require('request'),
+  express = require('express'),
+  body_parser = require('body-parser'),
+  app = express().use(body_parser.json()); // creates express http server
 
-const eventEmitter = new EventEmitter()
+// Sets server port and logs message on success
+app.listen(process.env.PORT || 1337, () => console.log('webhook is listening'));
 
-app.set('port', (process.env.PORT || 5000))
-app.use(bodyParser.urlencoded({extended: false}))
-app.use(bodyParser.json())
-
-app.get('/', function(req, res) {
-  res.send("hey there boi")
-})
-
-app.get('/webhook/', function(req, res) {
-  if (req.query['hub.verify_token'] === process.env.VERIFY_TOKEN){
-    return res.send(req.query['hub.challenge'])
-  }
-  res.send('wrong token')
-})
-
-app.listen(app.get('port'), function(){
-  console.log('Started on port', app.get('port'))
-})
+const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 
 
-const bot = new BootBot({
-    // accessToken: "EAAJ4VgnRkfUBAHvEFPEBId1fdH8SdvXVUfPq1cX8g94blUjfUHalkoCLrgXAmFsqAnCuv894PemlV7aRMZCpFPZC1hxhGixHAHmkZA74ZAFGV1eZClsXhB6nZC8BZBeJWs2vZCUtXvtmPFAoMbCErXkUVlXut1mpYIBMQoCMKh8NfAZDZD", // process.env.ACCESS_TOKEN,
-    // verifyToken: "38pe3940**", // process.env.VERIFY_TOKEN,
-    // appSecret: "5cf6d657b298a985cfc53819918d596f" // process.env.APP_SECRET
+
+// Accepts GET requests at the /webhook endpoint
+app.get('/webhook', (req, res) => {
   
-    accessToken: process.env.ACCESS_TOKEN,
-    verifyToken: process.env.VERIFY_TOKEN,
-    appSecret: process.env.APP_SECRET
-})
-
-bot.setGreetingText("Hello, I'm here to help you manage your tasks. Be sure to setup your bucket by typing 'Setup'. ")
-
-bot.setGetStartedButton((payload, chat) => {
-  if(config.bucket === undefined){
-    chat.say('Hello my name is Note Buddy and I can help you keep track of your thoughts')
-    chat.say("It seems like you have not setup your bucket settings yet. That has to be done before you can do anything else. Make sure to type 'setup'")
+  /** UPDATE YOUR VERIFY TOKEN **/
+  const VERIFY_TOKEN = "38pe3940**";
+  
+  // Parse params from the webhook verification request
+  let mode = req.query['hub.mode'];
+  let token = req.query['hub.verify_token'];
+  let challenge = req.query['hub.challenge'];
+    
+  // Check if a token and mode were sent
+  if (mode && token) {
+  
+    // Check the mode and token sent are correct
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      
+      // Respond with 200 OK and challenge token from the request
+      console.log('WEBHOOK_VERIFIED');
+      res.status(200).send(challenge);
+    
+    } else {
+      // Responds with '403 Forbidden' if verify tokens do not match
+      res.sendStatus(403);      
+    }
   }
-  BotUserId = payload.sender.id
 });
 
-bot.hear('setup', (payload, chat) => {
-  const getBucketSlug = (convo) => {
-    convo.ask("What's your Bucket's slug?", (payload, convo) => {
-      var slug = payload.message.text;
-      convo.set('slug', slug)
-      convo.say("setting slug as "+slug).then(() => getBucketReadKey(convo));
-    })
+
+app.post('/webhook', (req, res) => {  
+
+  // Parse the request body from the POST
+  let body = req.body;  
+  // Check the webhook event is from a Page subscription
+  if (body.object === 'page') {
+
+    console.log('entrou aqui');
+    // Iterate over each entry - there may be multiple if batched
+    body.entry.forEach(function(entry) {
+
+      // Gets the body of the webhook event
+      let webhook_event = entry.messaging[0];
+      console.log(webhook_event);
+
+
+      // Get the sender PSID
+      let sender_psid = webhook_event.sender.id;
+      console.log('Sender PSID: ' + sender_psid);
+
+      // Check if the event is a message or postback and
+      // pass the event to the appropriate handler function
+      if (webhook_event.message) {
+        handleMessage(sender_psid, webhook_event.message);        
+      } else if (webhook_event.postback) {
+        handlePostback(sender_psid, webhook_event.postback);
+      }
+
+    });
+
+    // Return a '200 OK' response to all events
+    res.status(200).send('EVENT_RECEIVED');
+
+  } else {
+    // Return a '404 Not Found' if event is not from a page subscription
+    res.sendStatus(404);
   }
-  const getBucketReadKey = (convo) => {
-    convo.ask("What's your Bucket's read key?", (payload, convo) => {
-      var readkey = payload.message.text;
-      convo.set('read_key', readkey)
-      convo.say('setting read_key as '+readkey).then(() => getBucketWriteKey(convo))
-    })
-  }
-  const getBucketWriteKey = (convo) => {
-    convo.ask("What's your Bucket's write key?", (payload, convo) => {
-      var writekey = payload.message.text
-      convo.set('write_key', writekey)
-      convo.say('setting write_key as '+writekey).then(() => finishing(convo))
-    })
-  }
-  const finishing = (convo) => {
-    var newConfigInfo = {
-      slug: convo.get('slug'),
-      read_key: convo.get('read_key'),
-      write_key: convo.get('write_key')
-    }
-    config.bucket = newConfigInfo
-    convo.say('All set :)')
-    convo.end();
-  }
+
+});
+
+
+// Handles messages events
+function handleMessage(sender_psid, received_message) {
+  let response;
   
-  chat.conversation((convo) => {
-    getBucketSlug(convo)
-  })
-})
-
-bot.hear(['hello', 'hey', 'sup'], (payload, chat)=>{
-  chat.getUserProfile().then((user) => {
-    chat.say(`Hey ${user.first_name}, How are you today?`)
-  })
-})
-
-bot.hear('config', (payload, chat) => {
-  if(JSON.stringify(config.bucket) === undefined){
-    chat.say("No config found :/ Be sure to run 'setup' to add your bucket details")
-  }
-  chat.say("A config has been found :) "+ JSON.stringify(config.bucket))
-})
-
-bot.hear('create', (payload, chat) => {
-  chat.conversation((convo) => {
-    convo.ask("What would you like your reminder to be? etc 'I have an appointment tomorrow from 10 to 11 AM' the information will be added automatically", (payload, convo) => {
-      datetime = chrono.parseDate(payload.message.text)
-      var params = {
-        write_key: config.bucket.write_key,
-        type_slug: 'reminders',
-        title: payload.message.text,
-        metafields: [
-         {
-           key: 'date',
-           type: 'text',
-           value: datetime
-         }
-        ]
-      }
-      Cosmic.addObject(config, params, function(error, response){
-        if(!error){
-          eventEmitter.emit('new', response.object.slug, datetime)
-          convo.say("reminder added correctly :)")
-          convo.end()
-        } else {
-          convo.say("there seems to be a problem. . .")
-          convo.end()
+  // Checks if the message contains text
+  if (received_message.text) {    
+    // Create the payload for a basic text message, which
+    // will be added to the body of our request to the Send API
+    response = {
+      "text": `You sent the message: "${received_message.text}". Now send me an attachment!`
+    }
+  } else if (received_message.attachments) {
+    // Get the URL of the message attachment
+    let attachment_url = received_message.attachments[0].payload.url;
+    response = {
+      "attachment": {
+        "type": "template",
+        "payload": {
+          "template_type": "generic",
+          "elements": [{
+            "title": "Is this the right picture?",
+            "subtitle": "Tap a button to answer.",
+            "image_url": attachment_url,
+            "buttons": [
+              {
+                "type": "postback",
+                "title": "Yes!",
+                "payload": "yes",
+              },
+              {
+                "type": "postback",
+                "title": "No!",
+                "payload": "no",
+              }
+            ],
+          }]
         }
-      })
-    })
-  })
-})
-
-bot.hear('help', (payload, chat) => {
-  chat.say('Here are the following commands for use.')
-  chat.say("'create': add a new reminder")
-  chat.say("'setup': add your bucket info such as slug and write key")
-  chat.say("'config': lists your current bucket config")
-})
-
-eventEmitter.on('new', function(itemSlug, time) {
-  schedule.scheduleJob(time, function(){
-    Cosmic.getObject(config, {slug: itemSlug}, function(error, response){
-      if(response.object.metadata.date == new Date(time).toISOString()){
-        bot.say(BotUserId, response.object.title)
-        console.log('firing reminder')
-      } else {
-        eventEmitter.emit('new', response.object.slug, response.object.metafield.date.value)
-        console.log('times do not match checking again at '+response.object.metadata.date)
       }
-    })
-  })
-})
+    }
+  } 
+  
+  // Send the response message
+  callSendAPI(sender_psid, response);    
+}
 
-bot.start()
+// Handles messaging_postbacks events
+function handlePostback(sender_psid, received_postback) {
+  let response;
+  
+  // Get the payload for the postback
+  let payload = received_postback.payload;
+
+  // Set the response based on the postback payload
+  if (payload === 'yes') {
+    response = { "text": "Thanks!" }
+  } else if (payload === 'no') {
+    response = { "text": "Oops, try sending another image." }
+  }
+  // Send the message to acknowledge the postback
+  callSendAPI(sender_psid, response);
+}
+
+// Sends response messages via the Send API
+function callSendAPI(sender_psid, response) {
+  // Construct the message body
+  let request_body = {
+    "recipient": {
+      "id": sender_psid
+    },
+    "message": response
+  }
+
+  // Send the HTTP request to the Messenger Platform
+  request({
+    "uri": "https://graph.facebook.com/v2.11/me/messages",
+    "qs": { "access_token": PAGE_ACCESS_TOKEN },
+    "method": "POST",
+    "json": request_body
+  }, (err, res, body) => {
+    if (!err) {
+      console.log('message sent!')
+    } else {
+      console.error("Unable to send message:" + err);
+    }
+  }); 
+}
